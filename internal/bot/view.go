@@ -15,44 +15,75 @@ const timeLayout = "2006-01-02 15:04"
 
 func escape(s string) string { return html.EscapeString(s) }
 
-// headerText 话题资料卡内容
+// headerText 话题资料卡内容，分区排版：
+//
+//	名字（粗体，点击打开资料页）
+//	ID · @username · 语言 · Premium
+//	┃ 简介（可折叠引用）
+//	📢 个人频道 · 🎂 生日
+//	状态 · 首次来访时间
 func headerText(u *model.User) string {
 	var b strings.Builder
-	name := escape(service.DisplayName(u.FirstName, u.LastName))
-	fmt.Fprintf(&b, "👤 <a href=\"tg://user?id=%d\">%s</a>", u.ID, name)
-	if u.IsPremium {
-		b.WriteString(" ⭐")
-	}
-	b.WriteString("\n")
+	fmt.Fprintf(&b, "<a href=\"tg://user?id=%d\"><b>%s</b></a>\n",
+		u.ID, escape(service.DisplayName(u.FirstName, u.LastName)))
+
+	meta := []string{fmt.Sprintf("<code>%d</code>", u.ID)}
 	if u.Username != "" {
-		fmt.Fprintf(&b, "@%s · ", u.Username)
+		meta = append(meta, "@"+u.Username)
 	}
-	fmt.Fprintf(&b, "ID <code>%d</code>\n", u.ID)
-	line := func(icon, v string) {
-		if v != "" {
-			fmt.Fprintf(&b, "%s %s\n", icon, escape(v))
-		}
+	if u.LanguageCode != "" {
+		meta = append(meta, escape(languageName(u.LanguageCode)))
 	}
-	line("🌐", u.LanguageCode)
-	line("📝", u.Bio)
-	line("🎂", u.Birthday)
-	line("📢", u.PersonalChannel)
-	fmt.Fprintf(&b, "🕐 首次来访 %s\n", u.CreatedAt.Format(timeLayout))
-	if u.VerifiedAt != nil {
-		fmt.Fprintf(&b, "✅ 已验证 %s", u.VerifiedAt.Format(timeLayout))
-	} else {
-		b.WriteString("⏳ 未验证")
+	if u.IsPremium {
+		meta = append(meta, "Premium")
 	}
-	if u.Banned {
-		b.WriteString("\n🚫 已拉黑")
+	b.WriteString(strings.Join(meta, " · "))
+
+	if u.Bio != "" {
+		fmt.Fprintf(&b, "\n<blockquote expandable>%s</blockquote>", escape(u.Bio))
 	}
+
+	var extra []string
+	if u.PersonalChannel != "" {
+		extra = append(extra, "📢 "+escape(u.PersonalChannel))
+	}
+	if u.Birthday != "" {
+		extra = append(extra, "🎂 "+escape(u.Birthday))
+	}
+	if len(extra) > 0 {
+		b.WriteString("\n" + strings.Join(extra, " · "))
+	}
+
+	status := "⏳ 未验证"
+	switch {
+	case u.Banned:
+		status = "🚫 已拉黑"
+	case u.VerifiedAt != nil:
+		status = "✅ 已验证"
+	}
+	fmt.Fprintf(&b, "\n\n%s · <i>首次来访 %s</i>", status, u.CreatedAt.Format(timeLayout))
 	return b.String()
 }
 
 // infoText /info 输出：资料卡 + 统计
 func infoText(u *model.User, msgCount int64) string {
-	return fmt.Sprintf("%s\n\n💬 消息数 %d\n📮 未回复 %d\n❌ 验证失败 %d 次",
+	return fmt.Sprintf("%s\n💬 %d 条消息 · 📮 未回复 %d · ❌ 验证失败 %d",
 		headerText(u), msgCount, u.Unreplied, u.FailCount)
+}
+
+var languageNames = map[string]string{
+	"zh-hans": "简体中文", "zh-hant": "繁體中文", "zh": "中文", "en": "English", "ru": "Русский",
+	"ja": "日本語", "ko": "한국어", "es": "Español", "fr": "Français", "de": "Deutsch",
+	"pt-br": "Português", "ar": "العربية", "fa": "فارسی", "tr": "Türkçe", "uk": "Українська",
+	"vi": "Tiếng Việt", "th": "ไทย", "id": "Bahasa Indonesia",
+}
+
+// languageName 常见语言代码显示为语言名，其它原样返回
+func languageName(code string) string {
+	if n, ok := languageNames[strings.ToLower(code)]; ok {
+		return n
+	}
+	return code
 }
 
 func onOff(on bool) string {
