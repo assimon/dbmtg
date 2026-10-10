@@ -29,9 +29,9 @@
         body: JSON.stringify({ init_data: tg.initData, token }),
       });
       const d = await r.json();
-      if (r.ok) {
-        setMsg("✅ 验证通过");
-        setTimeout(() => tg.close(), 800);
+      if (r.ok || d.verified) {
+        setMsg(r.ok ? "✅ 验证通过" : "✅ " + d.error);
+        setTimeout(() => tg.close(), 1500);
       } else {
         setMsg(d.error || "验证失败");
       }

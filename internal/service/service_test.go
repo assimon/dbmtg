@@ -62,6 +62,9 @@ func TestVerifyRules(t *testing.T) {
 	if !svc.Users.Verified(u) {
 		t.Fatal("just verified")
 	}
+	if err := svc.Verify.Verify(ctx, 1, "tok", ""); !errors.Is(err, ErrAlreadyVerified) {
+		t.Fatalf("re-verify: err=%v want ErrAlreadyVerified", err)
+	}
 	svc.Settings.SetVerifyTTLDays(1)
 	old := time.Now().Add(-48 * time.Hour)
 	u.VerifiedAt = &old

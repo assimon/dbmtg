@@ -12,6 +12,7 @@ var (
 	ErrCaptchaDisabled = errors.New("当前无需验证")
 	ErrUserNotFound    = errors.New("请先私聊机器人")
 	ErrBanned          = errors.New("你已被拉黑")
+	ErrAlreadyVerified = errors.New("你已通过验证，无需重复验证")
 	ErrVerifyFailed    = errors.New("验证失败，请重试")
 	ErrCaptchaService  = errors.New("验证服务暂时不可用，请稍后再试")
 )
@@ -38,6 +39,9 @@ func (s *VerifyService) Verify(ctx context.Context, userID int64, token, remoteI
 	}
 	if u.Banned {
 		return ErrBanned
+	}
+	if s.users.Verified(u) {
+		return ErrAlreadyVerified
 	}
 
 	ok, err := p.Verify(ctx, token, remoteIP)

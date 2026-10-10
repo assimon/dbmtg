@@ -50,6 +50,8 @@ func (s *Server) verifyAPI(c *gin.Context) {
 	switch {
 	case err == nil:
 		c.JSON(http.StatusOK, gin.H{"ok": true})
+	case errors.Is(err, service.ErrAlreadyVerified):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error(), "verified": true})
 	case errors.Is(err, service.ErrBanned):
 		c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 	case errors.Is(err, service.ErrCaptchaService):
