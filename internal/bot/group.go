@@ -22,13 +22,14 @@ func (b *Bot) topicUser(msg *models.Message) *model.User {
 	return u
 }
 
-// onGroupMessage 处理管理群话题内的消息：命令或回复访客
-func (b *Bot) onGroupMessage(ctx context.Context, msg *models.Message) {
+// onGroupMessage 处理管理群话题内的消息：命令或回复访客。msgs 为单条消息或整个相册
+func (b *Bot) onGroupMessage(ctx context.Context, msgs []*models.Message) {
+	msg := msgs[0]
 	u := b.topicUser(msg)
 	if u == nil || b.runCommand(ctx, ScopeTopic, msg, u) {
 		return
 	}
-	if err := b.svc.Relay.ToUser(ctx, u, msg); err != nil {
+	if err := b.svc.Relay.ToUser(ctx, u, msgs); err != nil {
 		hint := escape(err.Error())
 		if telegram.IsForbidden(err) {
 			hint = "对方已屏蔽机器人或已注销"

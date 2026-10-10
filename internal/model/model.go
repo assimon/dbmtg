@@ -29,9 +29,8 @@ type User struct {
 	Banned     bool
 	FailCount  int // 连续验证失败次数
 
-	Unreplied      int    // 管理员上次回复后已转发的消息数（相册算一条）
-	LastMediaGroup string // 最近一条转发消息的相册 ID，用于相册只计一次
-	LimitNotified  bool   // 本轮已提示过超出未回复上限
+	Unreplied     int  // 管理员上次回复后已转发的消息数（相册算一条）
+	LimitNotified bool // 本轮已提示过超出未回复上限
 
 	AwayNotifiedAt *time.Time // 最近一次离开模式自动回复的时间
 

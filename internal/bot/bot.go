@@ -20,6 +20,7 @@ type Bot struct {
 	tg       *telegram.Client
 	svc      *service.Services
 	commands []Command
+	albums   albums
 }
 
 func New(cfg *config.Config, tg *telegram.Client, svc *service.Services) *Bot {
@@ -77,11 +78,19 @@ func (b *Bot) dispatch(ctx context.Context, _ *tgbot.Bot, upd *models.Update) {
 	case upd.CallbackQuery != nil:
 		b.onCallback(ctx, upd.CallbackQuery)
 	case upd.Message != nil && upd.Message.From != nil:
+		var handle func(context.Context, []*models.Message)
 		if b.isGroup(upd.Message) {
-			b.onGroupMessage(ctx, upd.Message)
+			handle = b.onGroupMessage
 		} else if upd.Message.Chat.Type == models.ChatTypePrivate {
-			b.onPrivateMessage(ctx, upd.Message)
+			handle = b.onPrivateMessage
+		} else {
+			return
 		}
+		if upd.Message.MediaGroupID == "" {
+			handle(ctx, []*models.Message{upd.Message})
+			return
+		}
+		b.albums.add(upd.Message, func(msgs []*models.Message) { handle(ctx, msgs) })
 	case upd.EditedMessage != nil && upd.EditedMessage.From != nil:
 		if b.isGroup(upd.EditedMessage) {
 			b.onGroupEdit(ctx, upd.EditedMessage)

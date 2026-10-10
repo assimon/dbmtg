@@ -91,7 +91,7 @@ func TestFromUserGates(t *testing.T) {
 
 	check := func(want Outcome) {
 		t.Helper()
-		if got, err := svc.Relay.FromUser(ctx, u, msg); err != nil || got != want {
+		if got, err := svc.Relay.FromUser(ctx, u, []*models.Message{msg}); err != nil || got != want {
 			t.Fatalf("outcome=%v err=%v, want %v", got, err, want)
 		}
 	}

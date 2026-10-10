@@ -86,6 +86,11 @@ func (c *Client) Copy(ctx context.Context, p *bot.CopyMessageParams) (*models.Me
 	return Retry(ctx, func() (*models.MessageID, error) { return c.CopyMessage(ctx, p) })
 }
 
+// CopyAll 复制多条消息，相册保持分组。msgIDs 须升序
+func (c *Client) CopyAll(ctx context.Context, p *bot.CopyMessagesParams) ([]models.MessageID, error) {
+	return Retry(ctx, func() ([]models.MessageID, error) { return c.CopyMessages(ctx, p) })
+}
+
 // CreateTopic 创建论坛话题，返回 message_thread_id
 func (c *Client) CreateTopic(ctx context.Context, chatID int64, name string) (int, error) {
 	t, err := Retry(ctx, func() (*models.ForumTopic, error) {

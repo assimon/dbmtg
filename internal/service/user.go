@@ -127,8 +127,8 @@ func (s *UserService) SetBanned(ctx context.Context, u *model.User, banned bool)
 
 // ResetUnreplied 清零未回复计数（管理员回复或手动放行时）
 func (s *UserService) ResetUnreplied(u *model.User) error {
-	u.Unreplied, u.LastMediaGroup, u.LimitNotified = 0, "", false
-	return s.store.UpdateUser(u.ID, map[string]any{"unreplied": 0, "last_media_group": "", "limit_notified": false})
+	u.Unreplied, u.LimitNotified = 0, false
+	return s.store.UpdateUser(u.ID, map[string]any{"unreplied": 0, "limit_notified": false})
 }
 
 func (s *UserService) MessageCount(userID int64) int64 {

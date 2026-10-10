@@ -13,8 +13,9 @@ import (
 // VerifyPath 验证页路径，由 internal/server 提供
 const VerifyPath = "/verify"
 
-// onPrivateMessage 处理私聊消息：超级管理员命令优先，其余按访客处理
-func (b *Bot) onPrivateMessage(ctx context.Context, msg *models.Message) {
+// onPrivateMessage 处理私聊消息：超级管理员命令优先，其余按访客处理。msgs 为单条消息或整个相册
+func (b *Bot) onPrivateMessage(ctx context.Context, msgs []*models.Message) {
+	msg := msgs[0]
 	if b.cfg.IsAdmin(msg.From.ID) && b.runCommand(ctx, ScopeAdmin, msg, nil) {
 		return
 	}
@@ -34,7 +35,7 @@ func (b *Bot) onPrivateMessage(ctx context.Context, msg *models.Message) {
 		return
 	}
 
-	outcome, err := b.svc.Relay.FromUser(ctx, u, msg)
+	outcome, err := b.svc.Relay.FromUser(ctx, u, msgs)
 	if err != nil {
 		slog.Error("relay to group", "user", u.ID, "err", err)
 		b.tg.Notify(ctx, u.ID, 0, "⚠️ 消息发送失败，请稍后重试。", nil)

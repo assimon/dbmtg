@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -49,25 +50,36 @@ type RelayService struct {
 	flushMu sync.Mutex
 }
 
-// FromUser 处理用户发来的消息，依次检查：拉黑 → 须知确认 → 人机验证 → 未回复上限
-func (s *RelayService) FromUser(ctx context.Context, u *model.User, msg *models.Message) (Outcome, error) {
+// FromUser 处理用户发来的消息（单条或整个相册），依次检查：拉黑 → 须知确认 → 人机验证 → 未回复上限
+func (s *RelayService) FromUser(ctx context.Context, u *model.User, msgs []*models.Message) (Outcome, error) {
 	switch {
 	case u.Banned:
 		return Banned, nil
 	case !s.users.Acked(u):
-		return NeedAck, s.store.AddPending(u.ID, msg.ID, maxPendingPerUser)
+		return NeedAck, s.hold(u, msgs)
 	case !s.users.Verified(u):
-		return NeedVerify, s.store.AddPending(u.ID, msg.ID, maxPendingPerUser)
+		return NeedVerify, s.hold(u, msgs)
 	}
 	s.FlushPending(ctx, u) // 刚通过验证/确认，或验证被关闭时，先补发暂存消息
 	replyTo := 0
-	if msg.ReplyToMessage != nil {
-		replyTo = msg.ReplyToMessage.ID
+	if r := msgs[0].ReplyToMessage; r != nil {
+		replyTo = r.ID
 	}
-	return s.deliver(ctx, u, msg.ID, replyTo, msg.MediaGroupID)
+	return s.deliver(ctx, u, msgIDs(msgs), replyTo)
+}
+
+// hold 暂存验证前的消息
+func (s *RelayService) hold(u *model.User, msgs []*models.Message) error {
+	for _, m := range msgs {
+		if err := s.store.AddPending(u.ID, m.ID, maxPendingPerUser); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // FlushPending 投递用户验证前暂存的消息（同样受未回复上限约束）
+// ponytail: 逐条投递，暂存的相册会拆散，需要时在 Pending 里记相册 ID 再分组
 func (s *RelayService) FlushPending(ctx context.Context, u *model.User) {
 	s.flushMu.Lock()
 	defer s.flushMu.Unlock()
@@ -77,17 +89,16 @@ func (s *RelayService) FlushPending(ctx context.Context, u *model.User) {
 		return
 	}
 	for _, p := range ps {
-		if _, err := s.deliver(ctx, u, p.MsgID, 0, ""); err != nil {
+		if _, err := s.deliver(ctx, u, []int{p.MsgID}, 0); err != nil {
 			slog.Warn("flush pending", "user", u.ID, "err", err)
 		}
 		s.store.DeletePending(p.ID)
 	}
 }
 
-// deliver 检查未回复上限后转发，并处理送达回执和离开模式
-func (s *RelayService) deliver(ctx context.Context, u *model.User, msgID, replyTo int, mediaGroup string) (Outcome, error) {
-	counted := mediaGroup == "" || mediaGroup != u.LastMediaGroup // 同一相册只计一次
-	if limit := s.settings.MaxUnreplied(); limit > 0 && counted && u.Unreplied >= limit {
+// deliver 检查未回复上限后转发，并处理送达回执和离开模式。一次投递（含整个相册）计一条
+func (s *RelayService) deliver(ctx context.Context, u *model.User, msgIDs []int, replyTo int) (Outcome, error) {
+	if limit := s.settings.MaxUnreplied(); limit > 0 && u.Unreplied >= limit {
 		if !u.LimitNotified {
 			u.LimitNotified = true
 			if err := s.store.UpdateUser(u.ID, map[string]any{"limit_notified": true}); err != nil {
@@ -98,18 +109,15 @@ func (s *RelayService) deliver(ctx context.Context, u *model.User, msgID, replyT
 		return Dropped, nil
 	}
 
-	if err := s.toGroup(ctx, u, msgID, replyTo); err != nil {
+	if err := s.toGroup(ctx, u, msgIDs, replyTo); err != nil {
 		return Delivered, err
 	}
-	if counted {
-		u.Unreplied++
-	}
-	u.LastMediaGroup = mediaGroup
+	u.Unreplied++
 	// ponytail: 计数按内存值覆盖写，同一用户并发投递时可能少计，需要精确时改为 SQL 自增
-	s.store.UpdateUser(u.ID, map[string]any{"unreplied": u.Unreplied, "last_media_group": mediaGroup})
+	s.store.UpdateUser(u.ID, map[string]any{"unreplied": u.Unreplied})
 
 	if s.settings.DeliveryReceipt() {
-		s.tg.React(ctx, u.ID, msgID, receiptEmoji)
+		s.tg.React(ctx, u.ID, msgIDs[0], receiptEmoji)
 	}
 	s.awayReply(ctx, u)
 	return Delivered, nil
@@ -133,24 +141,24 @@ func (s *RelayService) awayReply(ctx context.Context, u *model.User) {
 	s.store.UpdateUser(u.ID, map[string]any{"away_notified_at": now})
 }
 
-func (s *RelayService) toGroup(ctx context.Context, u *model.User, msgID, replyToUserMsgID int) error {
+func (s *RelayService) toGroup(ctx context.Context, u *model.User, msgIDs []int, replyToUserMsgID int) error {
 	topic, err := s.ensureTopic(ctx, u)
 	if err != nil {
 		return err
 	}
-	p := &bot.CopyMessageParams{ChatID: s.groupID, MessageThreadID: topic, FromChatID: u.ID, MessageID: msgID}
+	var reply *models.ReplyParameters
 	if replyToUserMsgID != 0 {
 		if m := s.store.MsgByUserSide(u.ID, replyToUserMsgID); m != nil {
-			p.ReplyParameters = &models.ReplyParameters{MessageID: m.GroupMsgID, AllowSendingWithoutReply: true}
+			reply = &models.ReplyParameters{MessageID: m.GroupMsgID, AllowSendingWithoutReply: true}
 		}
 	}
-	res, err := s.tg.Copy(ctx, p)
+	res, err := s.copy(ctx, s.groupID, topic, u.ID, msgIDs, reply)
 	if telegram.IsTopicClosed(err) {
 		// 话题被手动关闭：重新打开后重发
 		if _, err := s.tg.ReopenForumTopic(ctx, &bot.ReopenForumTopicParams{ChatID: s.groupID, MessageThreadID: topic}); err != nil {
 			return fmt.Errorf("reopen topic: %w", err)
 		}
-		res, err = s.tg.Copy(ctx, p)
+		res, err = s.copy(ctx, s.groupID, topic, u.ID, msgIDs, reply)
 	}
 	if telegram.IsThreadNotFound(err) {
 		// 话题被手动删除：重建后重发
@@ -158,16 +166,52 @@ func (s *RelayService) toGroup(ctx context.Context, u *model.User, msgID, replyT
 			return err
 		}
 		u.TopicID, u.HeaderMsgID = 0, 0
-		if p.MessageThreadID, err = s.ensureTopic(ctx, u); err != nil {
+		if topic, err = s.ensureTopic(ctx, u); err != nil {
 			return err
 		}
-		p.ReplyParameters = nil
-		res, err = s.tg.Copy(ctx, p)
+		res, err = s.copy(ctx, s.groupID, topic, u.ID, msgIDs, nil)
 	}
 	if err != nil {
 		return err
 	}
-	return s.store.SaveMsgMap(&model.MsgMap{UserID: u.ID, UserMsgID: msgID, GroupMsgID: res.ID})
+	return s.saveMaps(u.ID, msgIDs, res, false)
+}
+
+// copy 单条用 copyMessage（可带回复引用）；相册用 copyMessages 保持分组，该接口不支持回复引用
+func (s *RelayService) copy(ctx context.Context, to int64, thread int, from int64, msgIDs []int, reply *models.ReplyParameters) ([]int, error) {
+	if len(msgIDs) == 1 {
+		m, err := s.tg.Copy(ctx, &bot.CopyMessageParams{ChatID: to, MessageThreadID: thread, FromChatID: from, MessageID: msgIDs[0], ReplyParameters: reply})
+		if err != nil {
+			return nil, err
+		}
+		return []int{m.ID}, nil
+	}
+	res, err := s.tg.CopyAll(ctx, &bot.CopyMessagesParams{ChatID: to, MessageThreadID: thread, FromChatID: from, MessageIDs: msgIDs})
+	ids := make([]int, len(res))
+	for i, m := range res {
+		ids[i] = m.ID
+	}
+	return ids, err
+}
+
+// saveMaps 记录两侧消息的对应关系，userIDs 与 groupIDs 按位置一一对应
+func (s *RelayService) saveMaps(userID int64, userIDs, groupIDs []int, toUser bool) error {
+	for i := range min(len(userIDs), len(groupIDs)) {
+		if err := s.store.SaveMsgMap(&model.MsgMap{UserID: userID, UserMsgID: userIDs[i], GroupMsgID: groupIDs[i], ToUser: toUser}); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// msgIDs 取消息 ID 并升序排列（copyMessages 要求）
+func msgIDs(msgs []*models.Message) []int {
+	ids := make([]int, len(msgs))
+	for i, m := range msgs {
+		ids[i] = m.ID
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func (s *RelayService) ensureTopic(ctx context.Context, u *model.User) (int, error) {
@@ -241,8 +285,21 @@ func (s *RelayService) signature(from *models.User) string {
 	return "\n\n— " + DisplayName(from.FirstName, from.LastName)
 }
 
-// ToUser 把管理群话题内的消息转发给用户，成功后清零未回复计数
-func (s *RelayService) ToUser(ctx context.Context, u *model.User, msg *models.Message) error {
+// ToUser 把管理群话题内的消息（单条或整个相册）转发给用户，成功后清零未回复计数
+func (s *RelayService) ToUser(ctx context.Context, u *model.User, msgs []*models.Message) error {
+	if len(msgs) > 1 {
+		// ponytail: 相册整组复制，不加署名也不带回复引用；需要署名时可在复制后对带说明文字的那条 editMessageCaption
+		groupIDs := msgIDs(msgs)
+		userIDs, err := s.copy(ctx, u.ID, 0, msgs[0].Chat.ID, groupIDs, nil)
+		if err != nil {
+			return err
+		}
+		if err := s.saveMaps(u.ID, userIDs, groupIDs, true); err != nil {
+			return err
+		}
+		return s.users.ResetUnreplied(u)
+	}
+	msg := msgs[0]
 	var reply *models.ReplyParameters
 	if msg.ReplyToMessage != nil {
 		if m := s.store.MsgByGroupSide(u.ID, msg.ReplyToMessage.ID); m != nil {
