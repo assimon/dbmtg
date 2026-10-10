@@ -1,6 +1,7 @@
 # 部署前先准备好配置：cp config.example.yaml config.yaml
 # 启动：docker compose up -d
 # 带 Cloudflare Tunnel 启动：在 .env 中写入 TUNNEL_TOKEN=...，然后 docker compose --profile tunnel up -d
+# 机器人本身只需要出站访问 Telegram，长轮询模式下不需要任何入站端口。
 
 services:
   dbmtg:
@@ -13,9 +14,10 @@ services:
     volumes:
       - ./config.yaml:/app/config.yaml:ro
       - ./data:/app/data
-    ports:
-      # 只监听本机，由反向代理（Caddy / Nginx）或下面的 Cloudflare Tunnel 提供 HTTPS
-      - "127.0.0.1:8080:8080"
+    # 默认不占用宿主机端口：下面的 cloudflared 在同一网络内通过 http://dbmtg:8080 访问。
+    # 如果改用宿主机上的 Caddy / Nginx 反代，取消下面两行注释（端口冲突时只改冒号左边的端口）
+    # ports:
+    #   - "127.0.0.1:8080:8080"
 
   # 可选：没有公网 IP 或不想配证书时使用。
   # 在 Cloudflare Zero Trust 创建 Tunnel，Public Hostname 的服务地址填 http://dbmtg:8080

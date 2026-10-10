@@ -47,6 +47,8 @@ docker compose logs -f
 ```
 
 > 一定要先创建 `config.yaml` 再启动，否则 Docker 会把它当成目录挂载。数据库保存在 `./data`。
+>
+> compose 默认不占用宿主机端口：长轮询模式只需要出站访问 Telegram，验证页由同一网络里的 Cloudflare Tunnel 访问。
 
 **源码运行**（Go 1.26+）
 
@@ -75,10 +77,10 @@ go build -o dbmtg ./cmd/dbmtg && ./dbmtg -c config.yaml
 
 **HTTPS 从哪来？**
 
-- 有服务器和域名：用 Caddy / Nginx 反代到 `127.0.0.1:8080`。
+- 有服务器和域名：在 `docker-compose.yml` 里取消 `ports` 的注释（端口冲突时改冒号左边的端口），再用 Caddy / Nginx 反代过去。
 - 没有公网 IP（家里的 NAS、旧电脑、树莓派）：用 **Cloudflare Tunnel**，不需要公网 IP，也不用配证书。
   1. 在 Cloudflare Zero Trust 创建一个 Tunnel，复制 token；
-  2. 在 Tunnel 里添加 Public Hostname，例如 `bot.example.com`，服务地址填 `http://dbmtg:8080`；
+  2. 在 Tunnel 里添加 Public Hostname，例如 `bot.example.com`，服务地址填 `http://dbmtg:8080`（容器间内网访问，不需要暴露端口）；
   3. 把 token 写进项目目录的 `.env`，带上 tunnel 启动：
      ```bash
      echo "TUNNEL_TOKEN=你的token" > .env
