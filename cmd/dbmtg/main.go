@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,9 +21,17 @@ import (
 	"github.com/assimon/dbmtg/internal/telegram"
 )
 
+// version 由构建时 -ldflags "-X main.version=..." 注入
+var version = "dev"
+
 func main() {
 	path := flag.String("c", "config.yaml", "配置文件路径")
+	showVersion := flag.Bool("version", false, "显示版本号")
 	flag.Parse()
+	if *showVersion {
+		fmt.Println("dbmtg", version)
+		return
+	}
 	if err := run(*path); err != nil {
 		slog.Error("exit", "err", err)
 		os.Exit(1)
@@ -74,7 +83,7 @@ func run(configPath string) error {
 			stop()
 		}
 	}()
-	slog.Info("started", "mode", cfg.Bot.Mode, "listen", cfg.Web.Listen, "captcha", svc.Settings.CaptchaMode())
+	slog.Info("started", "version", version, "mode", cfg.Bot.Mode, "listen", cfg.Web.Listen, "captcha", svc.Settings.CaptchaMode())
 
 	if err := b.Run(ctx); err != nil {
 		return err

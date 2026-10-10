@@ -3,7 +3,8 @@ WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /dbmtg ./cmd/dbmtg
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o /dbmtg ./cmd/dbmtg
 
 FROM alpine:3.22
 RUN apk add --no-cache ca-certificates tzdata

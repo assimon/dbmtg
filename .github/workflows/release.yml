@@ -1,0 +1,60 @@
+# 推送任意 tag 时自动测试、交叉编译并发布 Release。
+# 用法：git tag v1.0.0 && git push origin v1.0.0
+# tag 中带 "-"（如 v1.0.0-beta.1）会标记为预发布版本。
+name: Release
+
+on:
+  push:
+    tags:
+      - "*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Test
+        run: go test ./...
+
+      - name: Build
+        env:
+          VERSION: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # 纯 Go 构建（SQLite 驱动无 CGO）。windows/386 不受 SQLite 驱动支持，未列入。
+          targets="linux/amd64 linux/arm64 linux/arm/7 linux/386 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64 freebsd/amd64 freebsd/arm64"
+          mkdir -p build dist
+          for target in $targets; do
+            IFS=/ read -r os arch arm <<< "$target"
+            name="dbmtg_${VERSION}_${os}_${arch}${arm:+v$arm}"
+            bin=dbmtg
+            [ "$os" = windows ] && bin=dbmtg.exe
+            echo "::group::$name"
+            mkdir -p "build/$name"
+            CGO_ENABLED=0 GOOS=$os GOARCH=$arch GOARM=$arm \
+              go build -trimpath -ldflags "-s -w -X main.version=$VERSION" -o "build/$name/$bin" ./cmd/dbmtg
+            cp README.md LICENSE config.example.yaml "build/$name/"
+            if [ "$os" = windows ]; then
+              (cd build && zip -qr "../dist/$name.zip" "$name")
+            else
+              tar -czf "dist/$name.tar.gz" -C build "$name"
+            fi
+            echo "::endgroup::"
+          done
+          (cd dist && sha256sum * > checksums.txt)
+          ls -lh dist
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

@@ -3,3 +3,5 @@
 config.yaml
 PLAN.md
 .env
+/build/
+/dist/

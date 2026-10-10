@@ -50,6 +50,15 @@ docker compose logs -f
 >
 > compose 默认不占用宿主机端口：长轮询模式只需要出站访问 Telegram，验证页由同一网络里的 Cloudflare Tunnel 访问。
 
+**下载二进制**
+
+在 [Releases](https://github.com/assimon/dbmtg/releases) 下载对应平台的压缩包（Linux / macOS / Windows / FreeBSD，amd64 / arm64 等），解压后：
+
+```bash
+cp config.example.yaml config.yaml
+./dbmtg -c config.yaml        # ./dbmtg -version 查看版本
+```
+
 **源码运行**（Go 1.26+）
 
 ```bash
@@ -115,6 +124,16 @@ go build -o dbmtg ./cmd/dbmtg && ./dbmtg -c config.yaml
 完整配置见 [`config.example.yaml`](config.example.yaml)。所有配置项都可以用环境变量覆盖，前缀 `DBMTG_`，层级用下划线连接，如 `DBMTG_BOT_TOKEN`、`DBMTG_WEB_PUBLIC_URL`。
 
 运行时的开关（验证方式、须知、未回复上限、离开模式等）存在数据库里，通过机器人的 `/settings` 和命令修改，无需重启。
+
+## 发布
+
+推送 tag 即自动测试、交叉编译并发布 GitHub Release（见 [`.github/workflows/release.yml`](.github/workflows/release.yml)）：
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
+tag 中带 `-`（如 `v1.0.0-beta.1`）会标记为预发布版本。
 
 ## 其它说明
 
