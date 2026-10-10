@@ -1,7 +1,11 @@
 // Package model 定义持久化的数据模型。
 package model
 
-import "time"
+import (
+	"time"
+
+	"github.com/go-telegram/bot/models"
+)
 
 // User 通过机器人私聊的访客
 type User struct {
@@ -61,11 +65,12 @@ type Setting struct {
 
 // StoredMessage 管理员配置的一条消息（如须知、离开回复）。
 // 优先用 copyMessage 复制 ChatID/MsgID 指向的原消息，保留格式和媒体；
-// 原消息不可用时回退为纯文本 Text。
+// 原消息不可用或未引用原消息时，发送 Text + Entities（保留粗体、链接、自定义 emoji 等格式）。
 type StoredMessage struct {
-	Text   string `json:"text,omitempty"`
-	ChatID int64  `json:"chat_id,omitempty"`
-	MsgID  int    `json:"msg_id,omitempty"`
+	Text     string                 `json:"text,omitempty"`
+	Entities []models.MessageEntity `json:"entities,omitempty"`
+	ChatID   int64                  `json:"chat_id,omitempty"`
+	MsgID    int                    `json:"msg_id,omitempty"`
 }
 
 // All 返回需要自动迁移的全部模型

@@ -75,14 +75,14 @@ func adminCommands(b *Bot) []Command {
 
 func storedFromRequest(r *Request) (model.StoredMessage, bool) {
 	if rm := r.Msg.ReplyToMessage; rm != nil {
-		t := rm.Text
+		t, es := rm.Text, rm.Entities
 		if t == "" {
-			t = rm.Caption
+			t, es = rm.Caption, rm.CaptionEntities
 		}
-		return model.StoredMessage{Text: t, ChatID: rm.Chat.ID, MsgID: rm.ID}, true
+		return model.StoredMessage{Text: t, Entities: es, ChatID: rm.Chat.ID, MsgID: rm.ID}, true
 	}
 	if r.Args != "" {
-		return model.StoredMessage{Text: r.Args}, true
+		return model.StoredMessage{Text: r.Args, Entities: r.ArgsEntities}, true
 	}
 	return model.StoredMessage{}, false
 }

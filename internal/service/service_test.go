@@ -5,6 +5,7 @@ import (
 	"errors"
 	"html/template"
 	"path/filepath"
+	"reflect"
 	"testing"
 	"time"
 
@@ -127,14 +128,14 @@ func TestFromUserGates(t *testing.T) {
 
 func TestStoredMessageSettings(t *testing.T) {
 	svc := newTestServices(t)
-	if svc.Settings.Welcome() != DefaultWelcome {
+	if !reflect.DeepEqual(svc.Settings.Welcome(), DefaultWelcome) {
 		t.Fatal("expected default welcome")
 	}
 	want := model.StoredMessage{Text: "须知", ChatID: 9, MsgID: 42}
 	if err := svc.Settings.SetWelcome(want); err != nil {
 		t.Fatal(err)
 	}
-	if got := svc.Settings.Welcome(); got != want {
+	if got := svc.Settings.Welcome(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("welcome = %+v, want %+v", got, want)
 	}
 	if err := svc.Settings.SetAway(model.StoredMessage{}); err == nil {

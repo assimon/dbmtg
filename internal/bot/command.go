@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf16"
 
 	"github.com/go-telegram/bot/models"
 
@@ -21,9 +23,10 @@ const (
 
 // Request 命令调用上下文
 type Request struct {
-	Msg  *models.Message
-	Args string
-	User *model.User // ScopeTopic 时为话题对应的访客
+	Msg          *models.Message
+	Args         string
+	ArgsEntities []models.MessageEntity // Args 中的格式（粗体、链接、自定义 emoji 等），偏移相对 Args
+	User         *model.User            // ScopeTopic 时为话题对应的访客
 }
 
 // Reply 命令的回复，Text 为空则不回复
@@ -46,14 +49,22 @@ func text(s string) Reply { return Reply{Text: s} }
 
 func errReply(err error) Reply { return text("❌ " + err.Error()) }
 
-// parseCommand 解析 "/cmd@bot args"
+// parseCommand 解析 "/cmd@bot args"，命令和参数之间可以是空格或换行
 func parseCommand(s string) (name, args string) {
 	if !strings.HasPrefix(s, "/") {
 		return "", ""
 	}
-	first, rest, _ := strings.Cut(s, " ")
+	first, rest := splitCommand(s)
 	name, _, _ = strings.Cut(first[1:], "@")
 	return strings.ToLower(name), strings.TrimSpace(rest)
+}
+
+// splitCommand 在第一个空白字符处切开命令和其余部分
+func splitCommand(s string) (first, rest string) {
+	if i := strings.IndexFunc(s, unicode.IsSpace); i >= 0 {
+		return s[:i], s[i:]
+	}
+	return s, ""
 }
 
 // runCommand 执行命令，返回 false 表示不是该范围内的命令
@@ -64,7 +75,7 @@ func (b *Bot) runCommand(ctx context.Context, scope Scope, msg *models.Message, 
 	}
 	for _, c := range b.commands {
 		if c.Scope == scope && c.Name == name {
-			r := c.Handler(ctx, &Request{Msg: msg, Args: args, User: u})
+			r := c.Handler(ctx, &Request{Msg: msg, Args: args, ArgsEntities: argsEntities(msg.Text, args, msg.Entities), User: u})
 			if r.Text != "" {
 				b.tg.Notify(ctx, msg.Chat.ID, msg.MessageThreadID, r.Text, r.Markup)
 			}
@@ -73,6 +84,30 @@ func (b *Bot) runCommand(ctx context.Context, scope Scope, msg *models.Message, 
 	}
 	return false
 }
+
+// argsEntities 把整条消息的 entities 换算为相对命令参数 args 的偏移，丢弃命令本身的 entity。
+// Telegram 的 offset / length 以 UTF-16 码元计。
+func argsEntities(text, args string, entities []models.MessageEntity) []models.MessageEntity {
+	if args == "" || len(entities) == 0 {
+		return nil
+	}
+	_, rest := splitCommand(text)
+	start := len(text) - len(rest) + strings.Index(rest, args) // args 在 text 中的字节位置
+	from := utf16Len(text[:start])
+	to := from + utf16Len(args)
+	var out []models.MessageEntity
+	for _, e := range entities {
+		s, end := max(e.Offset, from), min(e.Offset+e.Length, to)
+		if s >= end {
+			continue
+		}
+		e.Offset, e.Length = s-from, end-s
+		out = append(out, e)
+	}
+	return out
+}
+
+func utf16Len(s string) int { return len(utf16.Encode([]rune(s))) }
 
 func (b *Bot) menu(scope Scope) []models.BotCommand {
 	if scope == ScopeUser {

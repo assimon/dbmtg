@@ -106,7 +106,7 @@ func (c *Client) SendStored(ctx context.Context, chatID int64, sm model.StoredMe
 		}
 		slog.Warn("copy stored message, fallback to text", "err", err)
 	}
-	_, err := c.Send(ctx, &bot.SendMessageParams{ChatID: chatID, Text: sm.Text, ReplyMarkup: markup})
+	_, err := c.Send(ctx, &bot.SendMessageParams{ChatID: chatID, Text: sm.Text, Entities: sm.Entities, ReplyMarkup: markup})
 	return err
 }
 
