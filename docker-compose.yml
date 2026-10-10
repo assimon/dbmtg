@@ -23,6 +23,7 @@ services:
   # 在 Cloudflare Zero Trust 创建 Tunnel，Public Hostname 的服务地址填 http://dbmtg:8080
   cloudflared:
     image: cloudflare/cloudflared:2026.9.1
+    container_name: dbmtg-cloudflared
     restart: unless-stopped
     command: tunnel --no-autoupdate run
     environment:
