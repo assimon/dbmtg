@@ -145,6 +145,13 @@ func (s *RelayService) toGroup(ctx context.Context, u *model.User, msgID, replyT
 		}
 	}
 	res, err := s.tg.Copy(ctx, p)
+	if telegram.IsTopicClosed(err) {
+		// 话题被手动关闭：重新打开后重发
+		if _, err := s.tg.ReopenForumTopic(ctx, &bot.ReopenForumTopicParams{ChatID: s.groupID, MessageThreadID: topic}); err != nil {
+			return fmt.Errorf("reopen topic: %w", err)
+		}
+		res, err = s.tg.Copy(ctx, p)
+	}
 	if telegram.IsThreadNotFound(err) {
 		// 话题被手动删除：重建后重发
 		if err := s.store.UpdateUser(u.ID, map[string]any{"topic_id": 0, "header_msg_id": 0}); err != nil {
@@ -181,6 +188,22 @@ func (s *RelayService) ensureTopic(ctx context.Context, u *model.User) (int, err
 	u.TopicID = id
 	s.events.topicCreated(ctx, u)
 	return id, nil
+}
+
+// BindGroup 记录话题数据所属的管理群。管理群更换后，旧话题 ID 在新群里可能与新话题重号，
+// 导致回复发错人，因此清空所有话题绑定和消息映射，用户下次发消息时自动在新群建话题。
+func (s *RelayService) BindGroup() (reset bool, err error) {
+	bound := fmt.Sprint(s.groupID)
+	old, ok := s.store.GetSetting(keyBoundGroup)
+	if ok && old == bound {
+		return false, nil
+	}
+	if ok {
+		if err := s.store.ResetTopics(); err != nil {
+			return false, err
+		}
+	}
+	return ok, s.store.SetSetting(keyBoundGroup, bound)
 }
 
 // RenameTopic 按最新资料更新话题标题
@@ -222,7 +245,7 @@ func (s *RelayService) signature(from *models.User) string {
 func (s *RelayService) ToUser(ctx context.Context, u *model.User, msg *models.Message) error {
 	var reply *models.ReplyParameters
 	if msg.ReplyToMessage != nil {
-		if m := s.store.MsgByGroupSide(msg.ReplyToMessage.ID); m != nil {
+		if m := s.store.MsgByGroupSide(u.ID, msg.ReplyToMessage.ID); m != nil {
 			reply = &models.ReplyParameters{MessageID: m.UserMsgID, AllowSendingWithoutReply: true}
 		}
 	}
@@ -266,7 +289,7 @@ func (s *RelayService) EditFromUser(ctx context.Context, u *model.User, msg *mod
 
 // EditFromAdmin 管理员编辑了发给用户的消息，同步到用户
 func (s *RelayService) EditFromAdmin(ctx context.Context, u *model.User, msg *models.Message) error {
-	m := s.store.MsgByGroupSide(msg.ID)
+	m := s.store.MsgByGroupSide(u.ID, msg.ID)
 	if m == nil || !m.ToUser {
 		return nil
 	}
@@ -295,8 +318,8 @@ func (s *RelayService) syncEdit(ctx context.Context, chatID int64, targetID int,
 
 // Retract 撤回管理员发给用户的消息，groupMsgID 为话题内的原消息
 func (s *RelayService) Retract(ctx context.Context, u *model.User, groupMsgID int) error {
-	m := s.store.MsgByGroupSide(groupMsgID)
-	if m == nil || !m.ToUser || m.UserID != u.ID {
+	m := s.store.MsgByGroupSide(u.ID, groupMsgID)
+	if m == nil || !m.ToUser {
 		return ErrNotRetractable
 	}
 	_, err := s.tg.DeleteMessage(ctx, &bot.DeleteMessageParams{ChatID: u.ID, MessageID: m.UserMsgID})

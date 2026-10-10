@@ -1,6 +1,10 @@
 package store
 
-import "github.com/assimon/dbmtg/internal/model"
+import (
+	"gorm.io/gorm"
+
+	"github.com/assimon/dbmtg/internal/model"
+)
 
 func (s *Store) SaveMsgMap(m *model.MsgMap) error {
 	return s.db.Create(m).Error
@@ -13,9 +17,20 @@ func (s *Store) MsgByUserSide(userID int64, userMsgID int) *model.MsgMap {
 }
 
 // MsgByGroupSide 按管理群侧消息 ID 查对应关系，找不到返回 nil
-func (s *Store) MsgByGroupSide(groupMsgID int) *model.MsgMap {
-	m, _ := first[model.MsgMap](s.db.Where("group_msg_id = ?", groupMsgID))
+func (s *Store) MsgByGroupSide(userID int64, groupMsgID int) *model.MsgMap {
+	m, _ := first[model.MsgMap](s.db.Where("user_id = ? AND group_msg_id = ?", userID, groupMsgID))
 	return m
+}
+
+// ResetTopics 清空所有用户的话题绑定和消息映射（更换管理群时使用）
+func (s *Store) ResetTopics() error {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&model.User{}).Where("1 = 1").
+			Updates(map[string]any{"topic_id": 0, "header_msg_id": 0}).Error; err != nil {
+			return err
+		}
+		return tx.Where("1 = 1").Delete(&model.MsgMap{}).Error
+	})
 }
 
 // CountMessages 统计消息数，userID 为 0 时统计全部

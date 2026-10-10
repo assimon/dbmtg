@@ -1,8 +1,9 @@
 bot:
   token: "123456:ABC-xxxx"        # @BotFather 获取
   mode: polling                   # polling | webhook（webhook 需要 web.public_url）
-  admin_group_id: -1001234567890  # 开启「话题」的超级群 ID，机器人需为管理员并有「管理话题」权限
-  admin_ids: [123456789]          # 超级管理员 TG 用户 ID，可私聊机器人修改设置
+  admin_group_id: 0               # 如 -1001234567890，开启「话题」的超级群 ID，机器人需为管理员并有「管理话题」「置顶消息」权限
+  admin_ids: []                   # 如 [123456789]，超级管理员 TG 用户 ID，可私聊机器人修改设置
+                                  # 以上两项留空会进入初始化模式，机器人会告诉你对应的 ID
 
 web:
   listen: ":8080"

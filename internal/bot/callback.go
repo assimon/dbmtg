@@ -9,6 +9,8 @@ import (
 
 	tgbot "github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+
+	"github.com/assimon/dbmtg/internal/telegram"
 )
 
 // 回调数据前缀，格式 "<前缀><动作>[:参数]"
@@ -59,7 +61,7 @@ func (b *Bot) onSettingCallback(ctx context.Context, cq *models.CallbackQuery, a
 	v := settingsView(s)
 	if _, err := b.tg.EditMessageText(ctx, &tgbot.EditMessageTextParams{
 		ChatID: m.Chat.ID, MessageID: m.ID, Text: v.Text, ParseMode: models.ParseModeHTML, ReplyMarkup: v.Markup,
-	}); err != nil {
+	}); err != nil && !telegram.IsNotModified(err) {
 		slog.Warn("edit settings message", "err", err)
 	}
 	return "已更新"

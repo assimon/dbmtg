@@ -127,7 +127,7 @@ func TestFromUserGates(t *testing.T) {
 
 func TestStoredMessageSettings(t *testing.T) {
 	svc := newTestServices(t)
-	if svc.Settings.Welcome() != defaultWelcome {
+	if svc.Settings.Welcome() != DefaultWelcome {
 		t.Fatal("expected default welcome")
 	}
 	want := model.StoredMessage{Text: "须知", ChatID: 9, MsgID: 42}
@@ -139,5 +139,50 @@ func TestStoredMessageSettings(t *testing.T) {
 	}
 	if err := svc.Settings.SetAway(model.StoredMessage{}); err == nil {
 		t.Fatal("empty message accepted")
+	}
+}
+
+func TestBindGroupResetsTopics(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServices(t)
+	st := svc.Relay.store
+	u, _ := svc.Users.Upsert(ctx, &models.User{ID: 1, FirstName: "A"})
+	st.UpdateUser(u.ID, map[string]any{"topic_id": 10, "header_msg_id": 11})
+	st.SaveMsgMap(&model.MsgMap{UserID: 1, UserMsgID: 1, GroupMsgID: 2})
+
+	svc.Relay.groupID = -100
+	if reset, err := svc.Relay.BindGroup(); err != nil || reset {
+		t.Fatalf("first bind: reset=%v err=%v", reset, err)
+	}
+	if reset, _ := svc.Relay.BindGroup(); reset {
+		t.Fatal("same group should not reset")
+	}
+	svc.Relay.groupID = -200
+	if reset, err := svc.Relay.BindGroup(); err != nil || !reset {
+		t.Fatalf("changed group: reset=%v err=%v", reset, err)
+	}
+	if got, _ := st.GetUser(1); got.TopicID != 0 || got.HeaderMsgID != 0 {
+		t.Fatalf("topic not reset: %+v", got)
+	}
+	if n, _ := st.CountMessages(0); n != 0 {
+		t.Fatalf("msg maps not cleared: %d", n)
+	}
+}
+
+// Upsert 只更新资料字段，不动话题等状态；改名触发 UserChanged
+func TestUpsertProfileOnly(t *testing.T) {
+	ctx := context.Background()
+	svc := newTestServices(t)
+	svc.Users.Upsert(ctx, &models.User{ID: 1, FirstName: "A"})
+	svc.Relay.store.UpdateUser(1, map[string]any{"topic_id": 10})
+	renamed := false
+	svc.Events.UserChanged = func(_ context.Context, _ *model.User, r bool) { renamed = r }
+
+	u, _ := svc.Users.Upsert(ctx, &models.User{ID: 1, FirstName: "B"})
+	if got, _ := svc.Users.Get(1); got.TopicID != 10 || got.FirstName != "B" {
+		t.Fatalf("state clobbered: %+v", got)
+	}
+	if !renamed || u.FirstName != "B" {
+		t.Fatal("rename event not fired")
 	}
 }

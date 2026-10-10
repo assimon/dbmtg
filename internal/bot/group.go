@@ -12,7 +12,7 @@ import (
 
 // topicUser 返回话题消息对应的访客；非话题消息、机器人自己的消息返回 nil
 func (b *Bot) topicUser(msg *models.Message) *model.User {
-	if msg.From.ID == b.tg.ID() || !msg.IsTopicMessage || msg.MessageThreadID == 0 {
+	if msg.From.ID == b.tg.ID() || !msg.IsTopicMessage || msg.MessageThreadID == 0 || isServiceMessage(msg) {
 		return nil
 	}
 	u, err := b.svc.Users.ByTopic(msg.MessageThreadID)
@@ -35,6 +35,18 @@ func (b *Bot) onGroupMessage(ctx context.Context, msg *models.Message) {
 		}
 		b.tg.Notify(ctx, msg.Chat.ID, msg.MessageThreadID, "⚠️ 发送失败："+hint, nil)
 	}
+}
+
+// isServiceMessage 置顶、话题改名/关闭、成员变动等服务消息，不能也不需要转发
+func isServiceMessage(m *models.Message) bool {
+	return m.PinnedMessage != nil || m.ForumTopicCreated != nil || m.ForumTopicEdited != nil ||
+		m.ForumTopicClosed != nil || m.ForumTopicReopened != nil ||
+		m.GeneralForumTopicHidden != nil || m.GeneralForumTopicUnhidden != nil ||
+		m.NewChatMembers != nil || m.LeftChatMember != nil || m.NewChatTitle != "" ||
+		m.MessageAutoDeleteTimerChanged != nil || m.WriteAccessAllowed != nil ||
+		m.ChatBackgroundSet != nil || m.BoostAdded != nil || m.ProximityAlertTriggered != nil ||
+		m.VideoChatScheduled != nil || m.VideoChatStarted != nil || m.VideoChatEnded != nil ||
+		m.VideoChatParticipantsInvited != nil
 }
 
 func (b *Bot) onGroupEdit(ctx context.Context, msg *models.Message) {

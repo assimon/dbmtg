@@ -80,10 +80,8 @@ func (c *Config) validate() error {
 	switch {
 	case c.Bot.Token == "":
 		return fmt.Errorf("bot.token 未配置")
-	case c.Bot.AdminGroupID == 0:
-		return fmt.Errorf("bot.admin_group_id 未配置")
-	case len(c.Bot.AdminIDs) == 0:
-		return fmt.Errorf("bot.admin_ids 未配置")
+	case c.Web.PublicURL != "" && !strings.HasPrefix(c.Web.PublicURL, "https://"):
+		return fmt.Errorf("web.public_url 必须是 https:// 地址（Telegram Mini App 要求）")
 	case c.Bot.Mode != ModePolling && c.Bot.Mode != ModeWebhook:
 		return fmt.Errorf("bot.mode 只能是 polling 或 webhook")
 	case c.Bot.Mode == ModeWebhook && c.Web.PublicURL == "":
@@ -91,5 +89,8 @@ func (c *Config) validate() error {
 	}
 	return nil
 }
+
+// SetupMode 未配置管理群或管理员时进入初始化模式：机器人只回复会话 ID，方便填写配置
+func (c *Config) SetupMode() bool { return c.Bot.AdminGroupID == 0 || len(c.Bot.AdminIDs) == 0 }
 
 func (c *Config) IsAdmin(id int64) bool { return slices.Contains(c.Bot.AdminIDs, id) }

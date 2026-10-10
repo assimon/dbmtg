@@ -129,6 +129,11 @@ func IsNotModified(err error) bool {
 // IsForbidden 对方屏蔽了机器人或账号已注销
 func IsForbidden(err error) bool { return errors.Is(err, bot.ErrorForbidden) }
 
+// IsTopicClosed 话题已被关闭
+func IsTopicClosed(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "TOPIC_CLOSED")
+}
+
 // IsThreadNotFound 话题已被删除
 func IsThreadNotFound(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "thread not found")

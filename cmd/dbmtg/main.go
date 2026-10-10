@@ -49,6 +49,13 @@ func run(configPath string) error {
 		providers = nil
 	}
 	svc := service.New(cfg, st, tg, providers)
+	if cfg.SetupMode() {
+		slog.Warn("未配置 bot.admin_group_id 或 bot.admin_ids，进入初始化模式：给机器人发消息或在群里发 /id 获取 ID")
+	} else if reset, err := svc.Relay.BindGroup(); err != nil {
+		return err
+	} else if reset {
+		slog.Warn("管理群已更换，已清空旧话题绑定，用户下次发消息时会在新群自动建话题")
+	}
 	b := bot.New(cfg, tg, svc)
 
 	var webhook http.Handler

@@ -25,13 +25,16 @@ const (
 	KeyAwayEnabled     = "away_enabled"
 	KeyAway            = "away"
 	KeyAwayHours       = "away_hours"
+
+	keyBoundGroup = "bound_group_id" // 话题数据所属的管理群，内部使用
 )
 
 // CaptchaOff 关闭人机验证
 const CaptchaOff = "off"
 
 var (
-	defaultWelcome = model.StoredMessage{Text: "你好，请直接发送消息，我会尽快回复。"}
+	// DefaultWelcome 未配置须知，或须知发送失败时使用
+	DefaultWelcome = model.StoredMessage{Text: "你好，请直接发送消息，我会尽快回复。"}
 	defaultAway    = model.StoredMessage{Text: "我现在不在线，看到消息后会尽快回复。"}
 )
 
@@ -144,7 +147,7 @@ func (s *SettingService) SetMaxVerifyFail(n int) error { return s.setInt(KeyMaxV
 
 // Welcome 用户 /start 时收到的须知
 func (s *SettingService) Welcome() model.StoredMessage {
-	return s.getMessage(KeyWelcome, defaultWelcome)
+	return s.getMessage(KeyWelcome, DefaultWelcome)
 }
 
 func (s *SettingService) SetWelcome(m model.StoredMessage) error { return s.setMessage(KeyWelcome, m) }

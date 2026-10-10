@@ -10,8 +10,8 @@ func (s *Store) UserByTopic(topicID int) (*model.User, error) {
 	return first[model.User](s.db.Where("topic_id = ?", topicID))
 }
 
-func (s *Store) SaveUser(u *model.User) error {
-	return s.db.Save(u).Error
+func (s *Store) CreateUser(u *model.User) error {
+	return s.db.Create(u).Error
 }
 
 // UpdateUser 只更新指定字段

@@ -22,17 +22,25 @@ func (s *UserService) Upsert(ctx context.Context, f *models.User) (*model.User, 
 	if err != nil {
 		return nil, err
 	}
-	isNew := u == nil
-	if isNew {
-		u = &model.User{ID: f.ID}
+	if u == nil {
+		u = &model.User{ID: f.ID, FirstName: f.FirstName, LastName: f.LastName, Username: f.Username,
+			LanguageCode: f.LanguageCode, IsPremium: f.IsPremium}
+		return u, s.store.CreateUser(u)
 	}
 	renamed := u.FirstName != f.FirstName || u.LastName != f.LastName || u.Username != f.Username
+	if !renamed && u.LanguageCode == f.LanguageCode && u.IsPremium == f.IsPremium {
+		return u, nil
+	}
+	// 只更新资料字段，避免覆盖其它 goroutine 同时写入的话题、计数等状态
 	u.FirstName, u.LastName, u.Username = f.FirstName, f.LastName, f.Username
 	u.LanguageCode, u.IsPremium = f.LanguageCode, f.IsPremium
-	if err := s.store.SaveUser(u); err != nil {
+	if err := s.store.UpdateUser(u.ID, map[string]any{
+		"first_name": f.FirstName, "last_name": f.LastName, "username": f.Username,
+		"language_code": f.LanguageCode, "is_premium": f.IsPremium,
+	}); err != nil {
 		return nil, err
 	}
-	if renamed && !isNew {
+	if renamed {
 		s.events.userChanged(ctx, u, true)
 	}
 	return u, nil

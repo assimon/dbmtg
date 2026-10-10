@@ -23,7 +23,7 @@ func (b *Bot) onPrivateMessage(ctx context.Context, msg *models.Message) {
 		slog.Error("upsert user", "user", msg.From.ID, "err", err)
 		return
 	}
-	if u.Banned {
+	if u.Banned || isServiceMessage(msg) {
 		return
 	}
 	if name, _ := parseCommand(msg.Text); name == "start" {
@@ -37,11 +37,12 @@ func (b *Bot) onPrivateMessage(ctx context.Context, msg *models.Message) {
 	outcome, err := b.svc.Relay.FromUser(ctx, u, msg)
 	if err != nil {
 		slog.Error("relay to group", "user", u.ID, "err", err)
+		b.tg.Notify(ctx, u.ID, 0, "⚠️ 消息发送失败，请稍后重试。", nil)
 		return
 	}
 	switch outcome {
 	case service.NeedAck:
-		b.tg.Notify(ctx, u.ID, 0, "📜 请先阅读须知，然后点击下方按钮。你的消息会在确认后送达。", ackMarkup())
+		b.sendWelcome(ctx, u) // 须知本身带「我已阅读」按钮；老用户可能从没收到过须知
 	case service.NeedVerify:
 		b.sendVerifyPrompt(ctx, u.ID)
 	}
@@ -64,7 +65,9 @@ func (b *Bot) sendWelcome(ctx context.Context, u *model.User) {
 		markup = ackMarkup()
 	}
 	if err := b.tg.SendStored(ctx, u.ID, b.svc.Settings.Welcome(), markup); err != nil {
-		slog.Warn("send welcome", "user", u.ID, "err", err)
+		// 须知原消息被删且没有文字时会失败；必须兜底，否则开启须知确认的用户永远拿不到确认按钮
+		slog.Warn("send welcome, fallback to default", "user", u.ID, "err", err)
+		b.tg.Notify(ctx, u.ID, 0, escape(service.DefaultWelcome.Text), markup)
 	}
 }
 
