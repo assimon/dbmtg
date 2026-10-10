@@ -1,0 +1,24 @@
+bot:
+  token: "123456:ABC-xxxx"        # @BotFather 获取
+  mode: polling                   # polling | webhook（webhook 需要 web.public_url）
+  admin_group_id: -1001234567890  # 开启「话题」的超级群 ID，机器人需为管理员并有「管理话题」权限
+  admin_ids: [123456789]          # 超级管理员 TG 用户 ID，可私聊机器人修改设置
+
+web:
+  listen: ":8080"
+  public_url: ""                  # 公网 HTTPS 地址，如 https://bot.example.com；验证页和 webhook 都需要
+
+# 至少配置一种才能开启验证，运行时在机器人里用 /settings 切换
+captcha:
+  turnstile:
+    site_key: ""
+    secret: ""
+  cap:                            # 自建 https://github.com/tiagozip/cap Standalone
+    url: ""                       # 如 https://cap.example.com
+    site_key: ""
+    secret: ""
+
+db:
+  path: "data/dbmtg.db"
+
+# 所有配置都可以用环境变量覆盖，如 DBMTG_BOT_TOKEN、DBMTG_WEB_PUBLIC_URL

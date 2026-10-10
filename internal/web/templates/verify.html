@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>人机验证</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; padding: 16px; box-sizing: border-box;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #111);
+  }
+  #msg { color: var(--tg-theme-hint-color, #888); text-align: center; }
+</style>
+<script>
+  const tg = window.Telegram.WebApp;
+  tg.ready();
+  const setMsg = (t) => { document.getElementById("msg").textContent = t; };
+
+  // 各验证组件完成后调用，见 internal/captcha.Provider
+  async function onCaptchaToken(token) {
+    setMsg("提交中…");
+    try {
+      const r = await fetch("{{.APIPath}}", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ init_data: tg.initData, token }),
+      });
+      const d = await r.json();
+      if (r.ok) {
+        setMsg("✅ 验证通过");
+        setTimeout(() => tg.close(), 800);
+      } else {
+        setMsg(d.error || "验证失败");
+      }
+    } catch (e) {
+      setMsg("网络错误，请重试");
+    }
+  }
+  document.addEventListener("DOMContentLoaded", () => {
+    if (!tg.initData) setMsg("请在 Telegram 中打开此页面");
+  });
+</script>
+</head>
+<body>
+{{if .Widget}}
+<h3>请完成人机验证</h3>
+{{.Widget}}
+<p id="msg"></p>
+{{else}}
+<p id="msg">当前无需验证，请直接返回聊天发送消息。</p>
+{{end}}
+</body>
+</html>
