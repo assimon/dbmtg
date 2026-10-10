@@ -3,6 +3,7 @@ package server
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,5 +29,5 @@ func New(cfg *config.Config, svc *service.Services, verifyPath, webhookPath stri
 	if webhook != nil {
 		r.POST(webhookPath, gin.WrapH(webhook))
 	}
-	return &http.Server{Addr: cfg.Web.Listen, Handler: r}
+	return &http.Server{Addr: cfg.Web.Listen, Handler: r, ReadHeaderTimeout: 10 * time.Second}
 }

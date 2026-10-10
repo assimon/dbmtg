@@ -78,6 +78,10 @@ func (b *Bot) onUserCallback(ctx context.Context, cq *models.CallbackQuery, data
 	if err != nil || u == nil {
 		return "用户不存在"
 	}
+	// 按钮只对所在话题的访客生效：防止访客借 inline bot 发来的按钮操作其他用户
+	if cq.Message.Message.MessageThreadID != u.TopicID {
+		return "无权限"
+	}
 	switch action {
 	case "ban", "unban":
 		if err := b.svc.Users.SetBanned(ctx, u, action == "ban"); err != nil {
