@@ -1,0 +1,31 @@
+# 部署前先准备好配置：cp config.example.yaml config.yaml
+# 启动：docker compose up -d
+# 带 Cloudflare Tunnel 启动：在 .env 中写入 TUNNEL_TOKEN=...，然后 docker compose --profile tunnel up -d
+
+services:
+  dbmtg:
+    build: .
+    image: dbmtg:latest
+    container_name: dbmtg
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+    ports:
+      # 只监听本机，由反向代理（Caddy / Nginx）或下面的 Cloudflare Tunnel 提供 HTTPS
+      - "127.0.0.1:8080:8080"
+
+  # 可选：没有公网 IP 或不想配证书时使用。
+  # 在 Cloudflare Zero Trust 创建 Tunnel，Public Hostname 的服务地址填 http://dbmtg:8080
+  cloudflared:
+    image: cloudflare/cloudflared:2026.9.1
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN}
+    depends_on:
+      - dbmtg
+    profiles:
+      - tunnel
