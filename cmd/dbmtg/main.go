@@ -48,7 +48,7 @@ func run(configPath string) error {
 		slog.Warn("未配置 web.public_url，人机验证不可用")
 		providers = nil
 	}
-	svc := service.New(cfg, st, tg, providers, bot.TopicHeader)
+	svc := service.New(cfg, st, tg, providers)
 	b := bot.New(cfg, tg, svc)
 
 	var webhook http.Handler

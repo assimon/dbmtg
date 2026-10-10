@@ -24,6 +24,9 @@ type Bot struct {
 func New(cfg *config.Config, tg *telegram.Client, svc *service.Services) *Bot {
 	b := &Bot{cfg: cfg, tg: tg, svc: svc}
 	b.commands = append(adminCommands(b), topicCommands(b)...)
+	svc.Events.TopicCreated = b.onTopicCreated
+	svc.Events.UserChanged = b.onUserChanged
+	svc.Events.LimitReached = b.onLimitReached
 	tg.RegisterHandlerMatchFunc(func(*models.Update) bool { return true }, b.dispatch)
 	return b
 }
@@ -59,13 +62,22 @@ func (b *Bot) dispatch(ctx context.Context, _ *tgbot.Bot, upd *models.Update) {
 	switch {
 	case upd.CallbackQuery != nil:
 		b.onCallback(ctx, upd.CallbackQuery)
-	case upd.Message == nil || upd.Message.From == nil:
-	case upd.Message.Chat.ID == b.cfg.Bot.AdminGroupID:
-		b.onGroupMessage(ctx, upd.Message)
-	case upd.Message.Chat.Type == models.ChatTypePrivate:
-		b.onPrivateMessage(ctx, upd.Message)
+	case upd.Message != nil && upd.Message.From != nil:
+		if b.isGroup(upd.Message) {
+			b.onGroupMessage(ctx, upd.Message)
+		} else if upd.Message.Chat.Type == models.ChatTypePrivate {
+			b.onPrivateMessage(ctx, upd.Message)
+		}
+	case upd.EditedMessage != nil && upd.EditedMessage.From != nil:
+		if b.isGroup(upd.EditedMessage) {
+			b.onGroupEdit(ctx, upd.EditedMessage)
+		} else if upd.EditedMessage.Chat.Type == models.ChatTypePrivate {
+			b.onPrivateEdit(ctx, upd.EditedMessage)
+		}
 	}
 }
+
+func (b *Bot) isGroup(msg *models.Message) bool { return msg.Chat.ID == b.cfg.Bot.AdminGroupID }
 
 // syncCommands 把命令注册到 Telegram 的命令菜单
 func (b *Bot) syncCommands(ctx context.Context) {

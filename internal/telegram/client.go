@@ -12,10 +12,12 @@ import (
 
 	"github.com/go-telegram/bot"
 	"github.com/go-telegram/bot/models"
+
+	"github.com/assimon/dbmtg/internal/model"
 )
 
 // AllowedUpdates 机器人订阅的更新类型
-var AllowedUpdates = []string{"message", "callback_query"}
+var AllowedUpdates = []string{"message", "edited_message", "callback_query"}
 
 type Client struct {
 	*bot.Bot
@@ -93,6 +95,35 @@ func (c *Client) CreateTopic(ctx context.Context, chatID int64, name string) (in
 		return 0, err
 	}
 	return t.MessageThreadID, nil
+}
+
+// SendStored 发送管理员配置的消息：优先复制原消息，失败时回退纯文本
+func (c *Client) SendStored(ctx context.Context, chatID int64, sm model.StoredMessage, markup models.ReplyMarkup) error {
+	if sm.MsgID != 0 {
+		_, err := c.Copy(ctx, &bot.CopyMessageParams{ChatID: chatID, FromChatID: sm.ChatID, MessageID: sm.MsgID, ReplyMarkup: markup})
+		if err == nil || sm.Text == "" {
+			return err
+		}
+		slog.Warn("copy stored message, fallback to text", "err", err)
+	}
+	_, err := c.Send(ctx, &bot.SendMessageParams{ChatID: chatID, Text: sm.Text, ReplyMarkup: markup})
+	return err
+}
+
+// React 给消息设置一个 emoji 反应，失败只记日志
+func (c *Client) React(ctx context.Context, chatID int64, msgID int, emoji string) {
+	_, err := c.SetMessageReaction(ctx, &bot.SetMessageReactionParams{
+		ChatID: chatID, MessageID: msgID,
+		Reaction: []models.ReactionType{{Type: models.ReactionTypeTypeEmoji, ReactionTypeEmoji: &models.ReactionTypeEmoji{Emoji: emoji}}},
+	})
+	if err != nil {
+		slog.Debug("set reaction", "chat", chatID, "err", err)
+	}
+}
+
+// IsNotModified 编辑内容与原消息相同
+func IsNotModified(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "message is not modified")
 }
 
 // IsForbidden 对方屏蔽了机器人或账号已注销

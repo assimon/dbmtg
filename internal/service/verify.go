@@ -45,7 +45,7 @@ func (s *VerifyService) Verify(ctx context.Context, userID int64, token, remoteI
 		return fmt.Errorf("%w: %s siteverify: %v", ErrCaptchaService, p.Name(), err)
 	}
 	if !ok {
-		if err := s.users.RecordVerifyFail(u); err != nil {
+		if err := s.users.RecordVerifyFail(ctx, u); err != nil {
 			return err
 		}
 		if u.Banned {
@@ -54,12 +54,14 @@ func (s *VerifyService) Verify(ctx context.Context, userID int64, token, remoteI
 		return ErrVerifyFailed
 	}
 
-	if err := s.users.MarkVerified(u); err != nil {
+	// 用独立 context，避免 HTTP 请求结束导致后续投递中断
+	bg := context.WithoutCancel(ctx)
+	if err := s.users.MarkVerified(bg, u); err != nil {
 		return err
 	}
-	// 用独立 context，避免 HTTP 请求结束导致投递中断
-	bg := context.WithoutCancel(ctx)
 	s.tg.Notify(bg, u.ID, 0, "✅ 验证通过，现在可以直接发送消息了。", nil)
-	go s.relay.FlushPending(bg, u)
+	if s.users.Acked(u) {
+		go s.relay.FlushPending(bg, u)
+	}
 	return nil
 }

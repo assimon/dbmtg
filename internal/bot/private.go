@@ -5,36 +5,66 @@ import (
 	"log/slog"
 
 	"github.com/go-telegram/bot/models"
+
+	"github.com/assimon/dbmtg/internal/model"
+	"github.com/assimon/dbmtg/internal/service"
 )
+
+// VerifyPath 验证页路径，由 internal/server 提供
+const VerifyPath = "/verify"
 
 // onPrivateMessage 处理私聊消息：超级管理员命令优先，其余按访客处理
 func (b *Bot) onPrivateMessage(ctx context.Context, msg *models.Message) {
 	if b.cfg.IsAdmin(msg.From.ID) && b.runCommand(ctx, ScopeAdmin, msg, nil) {
 		return
 	}
-	f := msg.From
-	u, err := b.svc.Users.Upsert(f.ID, f.FirstName, f.LastName, f.Username)
+	u, err := b.svc.Users.Upsert(ctx, msg.From)
 	if err != nil {
-		slog.Error("upsert user", "user", f.ID, "err", err)
+		slog.Error("upsert user", "user", msg.From.ID, "err", err)
 		return
 	}
 	if u.Banned {
 		return
 	}
 	if name, _ := parseCommand(msg.Text); name == "start" {
-		b.tg.Notify(ctx, u.ID, 0, escape(b.svc.Settings.WelcomeText()), nil)
-		if !b.svc.Users.Verified(u) {
+		b.sendWelcome(ctx, u)
+		if b.svc.Users.Acked(u) && !b.svc.Users.Verified(u) {
 			b.sendVerifyPrompt(ctx, u.ID)
 		}
 		return
 	}
-	delivered, err := b.svc.Relay.FromUser(ctx, u, msg)
+
+	outcome, err := b.svc.Relay.FromUser(ctx, u, msg)
 	if err != nil {
 		slog.Error("relay to group", "user", u.ID, "err", err)
 		return
 	}
-	if !delivered {
+	switch outcome {
+	case service.NeedAck:
+		b.tg.Notify(ctx, u.ID, 0, "📜 请先阅读须知，然后点击下方按钮。你的消息会在确认后送达。", ackMarkup())
+	case service.NeedVerify:
 		b.sendVerifyPrompt(ctx, u.ID)
+	}
+}
+
+func (b *Bot) onPrivateEdit(ctx context.Context, msg *models.Message) {
+	u, err := b.svc.Users.Get(msg.From.ID)
+	if err != nil || u == nil || u.Banned {
+		return
+	}
+	if err := b.svc.Relay.EditFromUser(ctx, u, msg); err != nil {
+		slog.Warn("sync user edit", "user", u.ID, "err", err)
+	}
+}
+
+// sendWelcome 发送须知；开启须知确认且用户未确认时附带「我已阅读」按钮
+func (b *Bot) sendWelcome(ctx context.Context, u *model.User) {
+	var markup models.ReplyMarkup
+	if !b.svc.Users.Acked(u) {
+		markup = ackMarkup()
+	}
+	if err := b.tg.SendStored(ctx, u.ID, b.svc.Settings.Welcome(), markup); err != nil {
+		slog.Warn("send welcome", "user", u.ID, "err", err)
 	}
 }
 
@@ -46,5 +76,8 @@ func (b *Bot) sendVerifyPrompt(ctx context.Context, userID int64) {
 	})
 }
 
-// VerifyPath 验证页路径，由 internal/server 提供
-const VerifyPath = "/verify"
+func ackMarkup() *models.InlineKeyboardMarkup {
+	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{{
+		{Text: "✅ 我已阅读", CallbackData: cbAck},
+	}}}
+}

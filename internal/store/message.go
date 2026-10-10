@@ -2,26 +2,20 @@ package store
 
 import "github.com/assimon/dbmtg/internal/model"
 
-func (s *Store) SaveMsgMap(userID int64, userMsgID, groupMsgID int) error {
-	return s.db.Create(&model.MsgMap{UserID: userID, UserMsgID: userMsgID, GroupMsgID: groupMsgID}).Error
+func (s *Store) SaveMsgMap(m *model.MsgMap) error {
+	return s.db.Create(m).Error
 }
 
-// GroupMsgID 根据用户侧消息 ID 查管理群侧消息 ID，找不到返回 0
-func (s *Store) GroupMsgID(userID int64, userMsgID int) int {
+// MsgByUserSide 按用户侧消息 ID 查对应关系，找不到返回 nil
+func (s *Store) MsgByUserSide(userID int64, userMsgID int) *model.MsgMap {
 	m, _ := first[model.MsgMap](s.db.Where("user_id = ? AND user_msg_id = ?", userID, userMsgID))
-	if m == nil {
-		return 0
-	}
-	return m.GroupMsgID
+	return m
 }
 
-// UserMsgID 根据管理群侧消息 ID 查用户侧消息 ID，找不到返回 0
-func (s *Store) UserMsgID(groupMsgID int) int {
+// MsgByGroupSide 按管理群侧消息 ID 查对应关系，找不到返回 nil
+func (s *Store) MsgByGroupSide(groupMsgID int) *model.MsgMap {
 	m, _ := first[model.MsgMap](s.db.Where("group_msg_id = ?", groupMsgID))
-	if m == nil {
-		return 0
-	}
-	return m.UserMsgID
+	return m
 }
 
 // CountMessages 统计消息数，userID 为 0 时统计全部
