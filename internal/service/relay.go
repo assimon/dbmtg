@@ -341,7 +341,25 @@ func (s *RelayService) EditFromUser(ctx context.Context, u *model.User, msg *mod
 	if m == nil || m.ToUser {
 		return nil
 	}
+	s.archiveBeforeEdit(ctx, u, m.GroupMsgID)
 	return s.syncEdit(ctx, s.groupID, m.GroupMsgID, msg, "")
+}
+
+// archiveBeforeEdit 机器人改自己的消息不显示「已编辑」，同步前在话题里发提醒，并把修改前的版本复制一份留档
+func (s *RelayService) archiveBeforeEdit(ctx context.Context, u *model.User, groupMsgID int) {
+	n, err := s.tg.Send(ctx, &bot.SendMessageParams{
+		ChatID: s.groupID, MessageThreadID: u.TopicID, Text: "✏️ 用户编辑了这条消息，修改前的内容如下：",
+		ReplyParameters: &models.ReplyParameters{MessageID: groupMsgID, AllowSendingWithoutReply: true},
+	})
+	if err == nil {
+		_, err = s.tg.Copy(ctx, &bot.CopyMessageParams{
+			ChatID: s.groupID, MessageThreadID: u.TopicID, FromChatID: s.groupID, MessageID: groupMsgID,
+			ReplyParameters: &models.ReplyParameters{MessageID: n.ID, AllowSendingWithoutReply: true}, DisableNotification: true,
+		})
+	}
+	if err != nil {
+		slog.Warn("archive before edit", "user", u.ID, "err", err)
+	}
 }
 
 // EditFromAdmin 管理员编辑了发给用户的消息，同步到用户
