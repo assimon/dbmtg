@@ -96,9 +96,15 @@ func (s *RelayService) FlushPending(ctx context.Context, u *model.User) {
 	}
 }
 
+// overLimit 用户是否已达未回复上限；管理员回复过或手动解除限制的用户豁免
+func (s *RelayService) overLimit(u *model.User) (int, bool) {
+	limit := s.settings.MaxUnreplied()
+	return limit, limit > 0 && !u.Unlimited && u.Unreplied >= limit
+}
+
 // deliver 检查未回复上限后转发，并处理送达回执和离开模式。一次投递（含整个相册）计一条
 func (s *RelayService) deliver(ctx context.Context, u *model.User, msgIDs []int, replyTo int) (Outcome, error) {
-	if limit := s.settings.MaxUnreplied(); limit > 0 && u.Unreplied >= limit {
+	if limit, over := s.overLimit(u); over {
 		if !u.LimitNotified {
 			u.LimitNotified = true
 			if err := s.store.UpdateUser(u.ID, map[string]any{"limit_notified": true}); err != nil {
@@ -285,7 +291,7 @@ func (s *RelayService) signature(from *models.User) string {
 	return "\n\n— " + DisplayName(from.FirstName, from.LastName)
 }
 
-// ToUser 把管理群话题内的消息（单条或整个相册）转发给用户，成功后清零未回复计数
+// ToUser 把管理群话题内的消息（单条或整个相册）转发给用户，成功后该用户不再受未回复上限约束
 func (s *RelayService) ToUser(ctx context.Context, u *model.User, msgs []*models.Message) error {
 	if len(msgs) > 1 {
 		// ponytail: 相册整组复制，不加署名也不带回复引用；需要署名时可在复制后对带说明文字的那条 editMessageCaption
@@ -297,7 +303,7 @@ func (s *RelayService) ToUser(ctx context.Context, u *model.User, msgs []*models
 		if err := s.saveMaps(u.ID, userIDs, groupIDs, true); err != nil {
 			return err
 		}
-		return s.users.ResetUnreplied(u)
+		return s.users.SetUnlimited(ctx, u, true)
 	}
 	msg := msgs[0]
 	var reply *models.ReplyParameters
@@ -332,7 +338,7 @@ func (s *RelayService) ToUser(ctx context.Context, u *model.User, msgs []*models
 	if err := s.store.SaveMsgMap(&model.MsgMap{UserID: u.ID, UserMsgID: userMsgID, GroupMsgID: msg.ID, ToUser: true}); err != nil {
 		return err
 	}
-	return s.users.ResetUnreplied(u)
+	return s.users.SetUnlimited(ctx, u, true)
 }
 
 // EditFromUser 用户编辑了已转发的消息，同步到话题

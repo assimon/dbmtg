@@ -125,10 +125,17 @@ func (s *UserService) SetBanned(ctx context.Context, u *model.User, banned bool)
 	return nil
 }
 
-// ResetUnreplied 清零未回复计数（管理员回复或手动放行时）
-func (s *UserService) ResetUnreplied(u *model.User) error {
-	u.Unreplied, u.LimitNotified = 0, false
-	return s.store.UpdateUser(u.ID, map[string]any{"unreplied": 0, "limit_notified": false})
+// SetUnlimited 设置用户是否豁免未回复上限，并清零未回复计数（管理员回复或点击资料卡按钮时）
+func (s *UserService) SetUnlimited(ctx context.Context, u *model.User, on bool) error {
+	if err := s.store.UpdateUser(u.ID, map[string]any{"unlimited": on, "unreplied": 0, "limit_notified": false}); err != nil {
+		return err
+	}
+	changed := u.Unlimited != on
+	u.Unlimited, u.Unreplied, u.LimitNotified = on, 0, false
+	if changed {
+		s.events.userChanged(ctx, u, false)
+	}
+	return nil
 }
 
 func (s *UserService) MessageCount(userID int64) int64 {

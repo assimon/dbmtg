@@ -91,11 +91,14 @@ func (b *Bot) onUserCallback(ctx context.Context, cq *models.CallbackQuery, data
 			return "已拉黑"
 		}
 		return "已解除拉黑"
-	case "release":
-		if err := b.svc.Users.ResetUnreplied(u); err != nil {
+	case "unlimit", "limit", "release": // release 为旧资料卡上的「放行」按钮
+		if err := b.svc.Users.SetUnlimited(ctx, u, action != "limit"); err != nil {
 			return err.Error()
 		}
-		return "已放行，未回复计数已清零"
+		if u.Unlimited {
+			return "已解除限制，该用户不再受未回复上限约束"
+		}
+		return "已恢复限制，未回复计数已清零"
 	case "refresh":
 		b.refreshHeader(ctx, u, true)
 		return "已刷新"

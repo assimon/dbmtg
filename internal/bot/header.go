@@ -59,7 +59,7 @@ func (b *Bot) onUserChanged(ctx context.Context, u *model.User, renamed bool) {
 func (b *Bot) onLimitReached(ctx context.Context, u *model.User, limit int) {
 	b.tg.Notify(ctx, u.ID, 0, fmt.Sprintf("⏳ 在收到回复前最多可发送 %d 条消息，请耐心等待。", limit), nil)
 	b.tg.Notify(ctx, b.cfg.Bot.AdminGroupID, u.TopicID,
-		fmt.Sprintf("⚠️ 该用户已达到未回复上限（%d 条），后续消息已拦截。回复或点击资料卡上的「放行」即可解除。", limit), nil)
+		fmt.Sprintf("⚠️ 该用户已达到未回复上限（%d 条），后续消息已拦截。回复或点击资料卡上的「解除消息限制」后，该用户不再受限。", limit), nil)
 }
 
 // refreshHeader 原地更新资料卡文字和按钮；refetch 为 true 时重新拉取 getChat 资料。
@@ -140,8 +140,9 @@ func headerMarkup(u *model.User, profileButton bool) *models.InlineKeyboardMarku
 	if u.Banned {
 		ban = models.InlineKeyboardButton{Text: "✅ 解除拉黑", CallbackData: cbUser + "unban:" + id}
 	}
-	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{
-		row1,
-		{ban, {Text: "🔓 放行", CallbackData: cbUser + "release:" + id}},
-	}}
+	limit := models.InlineKeyboardButton{Text: "🔓 解除消息限制", CallbackData: cbUser + "unlimit:" + id}
+	if u.Unlimited {
+		limit = models.InlineKeyboardButton{Text: "🔒 恢复消息限制", CallbackData: cbUser + "limit:" + id}
+	}
+	return &models.InlineKeyboardMarkup{InlineKeyboard: [][]models.InlineKeyboardButton{row1, {ban, limit}}}
 }

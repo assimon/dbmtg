@@ -31,6 +31,7 @@ type User struct {
 
 	Unreplied     int  // 管理员上次回复后已转发的消息数（相册算一条）
 	LimitNotified bool // 本轮已提示过超出未回复上限
+	Unlimited     bool // 不受未回复上限约束：管理员回复过即自动开启，可在资料卡上切换
 
 	AwayNotifiedAt *time.Time // 最近一次离开模式自动回复的时间
 

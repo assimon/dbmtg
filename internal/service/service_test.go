@@ -112,7 +112,7 @@ func TestFromUserGates(t *testing.T) {
 	check(Banned)
 	svc.Users.SetBanned(ctx, u, false)
 
-	// 超出未回复上限：丢弃，事件本轮只触发一次，放行后重置
+	// 超出未回复上限：丢弃，事件本轮只触发一次；解除限制后不再拦截，恢复限制后重新计数
 	svc.Settings.SetCaptchaMode(CaptchaOff)
 	svc.Settings.SetMaxUnreplied(2)
 	fired := 0
@@ -123,10 +123,17 @@ func TestFromUserGates(t *testing.T) {
 	if fired != 1 {
 		t.Fatalf("LimitReached fired %d times, want 1", fired)
 	}
-	svc.Users.ResetUnreplied(u)
-	if got, _ := svc.Users.Get(1); got.Unreplied != 0 || got.LimitNotified {
-		t.Fatalf("reset failed: %+v", got)
+	svc.Users.SetUnlimited(ctx, u, true)
+	if got, _ := svc.Users.Get(1); !got.Unlimited || got.Unreplied != 0 || got.LimitNotified {
+		t.Fatalf("unlimit failed: %+v", got)
 	}
+	u.Unreplied = 5
+	if _, over := svc.Relay.overLimit(u); over {
+		t.Fatal("unlimited user should not be limited")
+	}
+	svc.Users.SetUnlimited(ctx, u, false)
+	u.Unreplied = 2
+	check(Dropped)
 }
 
 func TestStoredMessageSettings(t *testing.T) {
